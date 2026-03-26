@@ -96,6 +96,8 @@ source:
   arxiv:
     category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
     include_cross_list: false # Set to true to include arXiv cross-list papers in these categories.
+    keywords: null # Optional. Filter retrieved papers by title/abstract keywords such as ["ISAC", "integrated sensing and communication"].
+    keyword_match: any # "any" keeps papers matching at least one keyword; "all" requires every keyword.
 
 executor:
   debug: ${oc.env:DEBUG,null}
@@ -116,6 +118,8 @@ source:
   arxiv:
     category: null # The categories of target arxiv papers. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy). Example: ["cs.AI","cs.CV","cs.LG","cs.CL"]
     include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true
+    keywords: null # Optional keywords or phrases used to filter title and abstract after category retrieval. Example: ["ISAC", "integrated sensing and communication", "sensing"]
+    keyword_match: any # Keyword filter mode. "any" means at least one keyword matches; "all" means all keywords must match.
   biorxiv:
     category: null # The categories of target biorxiv papers. Find categories from [here](https://www.biorxiv.org/). Example: ["biochemistry","animal behavior and cognition"]
   medrxiv:

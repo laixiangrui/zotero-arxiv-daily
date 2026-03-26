@@ -58,6 +58,7 @@ def test_tldr(config,paper:Paper):
     openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
     paper.generate_tldr(openai_client, config.llm)
     assert paper.tldr is not None
+    assert isinstance(paper.tldr, str)
 
 def test_tldr_context_extracts_key_sentences(paper:Paper):
     context = paper._build_tldr_context()

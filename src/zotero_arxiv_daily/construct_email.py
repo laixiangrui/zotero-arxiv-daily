@@ -1,5 +1,6 @@
 from .protocol import Paper
 import math
+import html
 
 
 framework = """
@@ -52,6 +53,15 @@ def get_empty_html():
   """
   return block_template
 
+def format_summary_html(summary: str) -> str:
+    if not summary:
+        return "Unavailable"
+    lines = [line.strip() for line in summary.splitlines() if line.strip()]
+    if not lines:
+        return "Unavailable"
+    return "<br>".join(html.escape(line) for line in lines)
+
+
 def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affiliations:str=None):
     block_template = """
     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
@@ -74,7 +84,7 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
     </tr>
     <tr>
         <td style="font-size: 14px; color: #333; padding: 8px 0;">
-            <strong>TLDR:</strong> {tldr}
+            <strong>Summary:</strong><br>{tldr}
         </td>
     </tr>
 
@@ -85,7 +95,14 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
     </tr>
 </table>
 """
-    return block_template.format(title=title, authors=authors,rate=rate, tldr=tldr, pdf_url=pdf_url, affiliations=affiliations)
+    return block_template.format(
+        title=html.escape(title),
+        authors=html.escape(authors),
+        rate=rate,
+        tldr=format_summary_html(tldr),
+        pdf_url=pdf_url,
+        affiliations=html.escape(affiliations),
+    )
 
 def get_stars(score:float):
     full_star = '<span class="full-star">⭐</span>'

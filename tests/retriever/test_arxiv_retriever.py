@@ -42,6 +42,48 @@ def test_arxiv_retriever(config, monkeypatch):
     assert set(paper_titles) == set(parsed_titles)
 
 
+def test_arxiv_retriever_keyword_filter_any(config, monkeypatch):
+    parsed_result = feedparser.parse("tests/retriever/arxiv_rss_example.xml")
+    raw_parser = feedparser.parse
+
+    def mock_feedparser_parse(url):
+        if url == f"https://rss.arxiv.org/atom/{'+'.join(config.source.arxiv.category)}":
+            return parsed_result
+        return raw_parser(url)
+
+    monkeypatch.setattr(feedparser, "parse", mock_feedparser_parse)
+    with open_dict(config.source.arxiv):
+        config.source.arxiv.keywords = ["time series forecasting", "multimodal"]
+        config.source.arxiv.keyword_match = "any"
+
+    retriever = ArxivRetriever(config)
+    papers = retriever.retrieve_papers()
+
+    assert len(papers) == 1
+    assert papers[0].title == "EventTSF: Event-Aware Non-Stationary Time Series Forecasting with Diffusion-Driven Multimodal Generation"
+
+
+def test_arxiv_retriever_keyword_filter_all(config, monkeypatch):
+    parsed_result = feedparser.parse("tests/retriever/arxiv_rss_example.xml")
+    raw_parser = feedparser.parse
+
+    def mock_feedparser_parse(url):
+        if url == f"https://rss.arxiv.org/atom/{'+'.join(config.source.arxiv.category)}":
+            return parsed_result
+        return raw_parser(url)
+
+    monkeypatch.setattr(feedparser, "parse", mock_feedparser_parse)
+    with open_dict(config.source.arxiv):
+        config.source.arxiv.keywords = ["time series forecasting", "multimodal"]
+        config.source.arxiv.keyword_match = "all"
+
+    retriever = ArxivRetriever(config)
+    papers = retriever.retrieve_papers()
+
+    assert len(papers) == 1
+    assert "EventTSF" in papers[0].title
+
+
 @register_retriever("failing_test")
 class FailingTestRetriever(BaseRetriever):
     def _retrieve_raw_papers(self) -> list[dict[str, str]]:

@@ -13,7 +13,7 @@ def papers() -> list[Paper]:
         url="https://arxiv.org/abs/2512.04296",
         pdf_url="https://arxiv.org/pdf/2512.04296",
         full_text="Test Full Text",
-        tldr="Test TLDR",
+        tldr="Problem: Test challenge\nMethod: Test method\nFinding: Test finding",
         affiliations=["Test Affiliation","Test Affiliation 2"],
         score=0.5
     )
@@ -22,6 +22,8 @@ def papers() -> list[Paper]:
 def test_render_email(papers:list[Paper]):
     email_content = render_email(papers)
     assert email_content is not None
+    assert "Summary:" in email_content
+    assert "<br>Method: Test method<br>" in email_content
 
 @pytest.mark.ci
 def test_send_email(config,papers:list[Paper]):

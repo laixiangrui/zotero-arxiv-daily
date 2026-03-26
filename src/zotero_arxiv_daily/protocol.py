@@ -59,15 +59,16 @@ class Paper:
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')
         prompt = (
-            f"Read the paper metadata and excerpts below, then produce exactly one TLDR sentence in {lang}.\n\n"
+            f"Read the paper metadata and excerpts below, then produce a compact but information-rich summary in {lang}.\n\n"
             "Requirements:\n"
-            "- State the problem or task.\n"
-            "- State the core method or idea.\n"
-            "- State the main empirical or practical takeaway if evidence is available.\n"
-            "- Be specific and technical.\n"
+            "- Output exactly 3 lines.\n"
+            "- Line 1 starts with 'Problem: ' and states the task or challenge.\n"
+            "- Line 2 starts with 'Method: ' and states the core method or technical idea.\n"
+            "- Line 3 starts with 'Finding: ' and states the main empirical result, practical takeaway, or intended benefit.\n"
+            "- Each line should be concise but specific.\n"
             "- Avoid generic phrases such as 'this paper presents'.\n"
             "- Do not mention unavailable details or speculate.\n"
-            "- Output only the final sentence.\n\n"
+            "- Output only the final 3 lines.\n\n"
         )
         prompt += self._build_tldr_context()
         if not self.full_text and not self.abstract:
@@ -82,14 +83,16 @@ class Paper:
                     "role": "system",
                     "content": (
                         "You summarize scientific papers for expert readers. "
-                        f"Return one precise sentence in {lang} that captures task, method, and main result when available."
+                        f"Return exactly 3 lines in {lang} with the prefixes 'Problem:', 'Method:', and 'Finding:'."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
             **llm_params.get('generation_kwargs', {})
         )
-        tldr = response.choices[0].message.content
+        tldr = (response.choices[0].message.content or "").strip()
+        if not tldr:
+            raise ValueError("Empty summary returned by LLM")
         return tldr
     
     def generate_tldr(self, openai_client:OpenAI,llm_params:dict) -> str:

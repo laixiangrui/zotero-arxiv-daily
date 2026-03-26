@@ -12,6 +12,7 @@ from queue import Empty
 from typing import Any, Callable, TypeVar
 from loguru import logger
 import requests
+import re
 
 T = TypeVar("T")
 
@@ -112,6 +113,24 @@ class ArxivRetriever(BaseRetriever):
         if self.config.source.arxiv.category is None:
             raise ValueError("category must be specified for arxiv.")
 
+    @staticmethod
+    def _normalize_keyword(keyword: str) -> str:
+        return re.sub(r"\s+", " ", keyword.strip().lower())
+
+    def _match_keywords(self, paper: ArxivResult) -> bool:
+        keywords = self.config.source.arxiv.get("keywords")
+        if not keywords:
+            return True
+        text = f"{paper.title}\n{paper.summary}".lower()
+        normalized_text = re.sub(r"\s+", " ", text)
+        match_mode = self.config.source.arxiv.get("keyword_match", "any")
+        normalized_keywords = [self._normalize_keyword(keyword) for keyword in keywords if keyword.strip()]
+        if not normalized_keywords:
+            return True
+        if match_mode == "all":
+            return all(keyword in normalized_text for keyword in normalized_keywords)
+        return any(keyword in normalized_text for keyword in normalized_keywords)
+
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
         client = arxiv.Client(num_retries=10, delay_seconds=10)
         query = '+'.join(self.config.source.arxiv.category)
@@ -138,6 +157,15 @@ class ArxivRetriever(BaseRetriever):
             bar.update(len(batch))
             raw_papers.extend(batch)
         bar.close()
+
+        keywords = self.config.source.arxiv.get("keywords")
+        if keywords:
+            before_filter = len(raw_papers)
+            raw_papers = [paper for paper in raw_papers if self._match_keywords(paper)]
+            logger.info(
+                f"Filtered arXiv papers by keywords {list(keywords)}: "
+                f"{len(raw_papers)}/{before_filter} papers kept"
+            )
 
         return raw_papers
 
