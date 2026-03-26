@@ -59,6 +59,11 @@ def test_tldr(config,paper:Paper):
     paper.generate_tldr(openai_client, config.llm)
     assert paper.tldr is not None
 
+def test_tldr_context_extracts_key_sentences(paper:Paper):
+    context = paper._build_tldr_context()
+    assert "Focused excerpts from the paper body:" in context
+    assert "We introduce" in context or "we introduce" in context
+
 @pytest.mark.ci
 def test_affiliations(config,paper:Paper):
     openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)

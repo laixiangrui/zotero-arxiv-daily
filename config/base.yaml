@@ -30,6 +30,11 @@ llm:
   language: English # Preferred language for the TL;DR. Example: English
 
 reranker:
+  scoring:
+    semantic_weight: 0.85 # Weight of embedding similarity in the final relevance score. Example: 0.8
+    lexical_weight: 0.15 # Weight of token overlap in the final relevance score. Example: 0.2
+    neighbor_top_k: 8 # Number of nearest Zotero papers used for local relevance aggregation. Example: 10
+    top_k_weight: 0.7 # Weight of local top-k relevance compared with global time-decayed relevance. Example: 0.6
   local:
     model: jinaai/jina-embeddings-v5-text-nano # The Hugging Face model name of the local embedding model. Example: jinaai/jina-embeddings-v5-text-nano
     encode_kwargs:

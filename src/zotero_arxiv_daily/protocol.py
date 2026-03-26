@@ -21,33 +21,69 @@ class Paper:
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
 
-    def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
-        lang = llm_params.get('language', 'English')
-        prompt = f"Given the following information of a paper, generate a one-sentence TLDR summary in {lang}:\n\n"
-        if self.title:
-            prompt += f"Title:\n {self.title}\n\n"
+    @staticmethod
+    def _truncate_text(text: str, max_tokens: int) -> str:
+        enc = tiktoken.encoding_for_model("gpt-4o")
+        text_tokens = enc.encode(text)
+        text_tokens = text_tokens[:max_tokens]
+        return enc.decode(text_tokens)
 
+    def _build_tldr_context(self) -> str:
+        context_parts = []
+        if self.title:
+            context_parts.append(f"Title:\n{self.title}")
         if self.abstract:
-            prompt += f"Abstract: {self.abstract}\n\n"
+            context_parts.append(f"Abstract:\n{self.abstract}")
 
         if self.full_text:
-            prompt += f"Preview of main content:\n {self.full_text}\n\n"
+            normalized_text = re.sub(r"\s+", " ", self.full_text)
+            key_sentences = re.findall(
+                r"([^.?!\n]{0,80}\b("
+                r"we propose|we introduce|we present|we develop|we study|"
+                r"our method|our framework|our approach|this paper|"
+                r"results show|experiments show|we demonstrate|we show|"
+                r"outperform|improves|improvement|contribution|contributions"
+                r")\b[^.?!\n]{0,240}[.?!])",
+                normalized_text,
+                flags=re.IGNORECASE,
+            )
+            excerpt = " ".join(sentence for sentence, _ in key_sentences[:8]).strip()
+            if not excerpt:
+                excerpt = normalized_text[:4000]
+            context_parts.append(
+                "Focused excerpts from the paper body:\n"
+                f"{self._truncate_text(excerpt, 1200)}"
+            )
+        return "\n\n".join(context_parts)
 
+    def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
+        lang = llm_params.get('language', 'English')
+        prompt = (
+            f"Read the paper metadata and excerpts below, then produce exactly one TLDR sentence in {lang}.\n\n"
+            "Requirements:\n"
+            "- State the problem or task.\n"
+            "- State the core method or idea.\n"
+            "- State the main empirical or practical takeaway if evidence is available.\n"
+            "- Be specific and technical.\n"
+            "- Avoid generic phrases such as 'this paper presents'.\n"
+            "- Do not mention unavailable details or speculate.\n"
+            "- Output only the final sentence.\n\n"
+        )
+        prompt += self._build_tldr_context()
         if not self.full_text and not self.abstract:
             logger.warning(f"Neither full text nor abstract is provided for {self.url}")
             return "Failed to generate TLDR. Neither full text nor abstract is provided"
         
-        # use gpt-4o tokenizer for estimation
-        enc = tiktoken.encoding_for_model("gpt-4o")
-        prompt_tokens = enc.encode(prompt)
-        prompt_tokens = prompt_tokens[:4000]  # truncate to 4000 tokens
-        prompt = enc.decode(prompt_tokens)
+        prompt = self._truncate_text(prompt, 4000)
         
         response = openai_client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": f"You are an assistant who perfectly summarizes scientific paper, and gives the core idea of the paper to the user. Your answer should be in {lang}.",
+                    "content": (
+                        "You summarize scientific papers for expert readers. "
+                        f"Return one precise sentence in {lang} that captures task, method, and main result when available."
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
