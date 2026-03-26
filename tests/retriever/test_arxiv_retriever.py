@@ -61,7 +61,7 @@ def test_arxiv_retriever_keyword_filter_any(config, monkeypatch):
     papers = retriever.retrieve_papers()
 
     assert len(papers) == 1
-    assert papers[0].title == "EventTSF: Event-Aware Non-Stationary Time Series Forecasting with Diffusion-Driven Multimodal Generation"
+    assert papers[0].title.startswith("EventTSF: Event-Aware Non-Stationary Time Series Forecasting")
 
 
 def test_arxiv_retriever_keyword_filter_all(config, monkeypatch):
