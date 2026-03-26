@@ -53,6 +53,7 @@ def test_arxiv_retriever_keyword_filter_any(config, monkeypatch):
 
     monkeypatch.setattr(feedparser, "parse", mock_feedparser_parse)
     with open_dict(config.source.arxiv):
+        config.source.arxiv.include_cross_list = True
         config.source.arxiv.keywords = ["time series forecasting", "multimodal"]
         config.source.arxiv.keyword_match = "any"
 
@@ -74,6 +75,7 @@ def test_arxiv_retriever_keyword_filter_all(config, monkeypatch):
 
     monkeypatch.setattr(feedparser, "parse", mock_feedparser_parse)
     with open_dict(config.source.arxiv):
+        config.source.arxiv.include_cross_list = True
         config.source.arxiv.keywords = ["time series forecasting", "multimodal"]
         config.source.arxiv.keyword_match = "all"
 

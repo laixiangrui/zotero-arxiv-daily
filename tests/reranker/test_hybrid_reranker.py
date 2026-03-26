@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import numpy as np
 from zotero_arxiv_daily.protocol import Paper, CorpusPaper
 from zotero_arxiv_daily.reranker.base import BaseReranker
@@ -14,7 +14,7 @@ class DummyReranker(BaseReranker):
 
 def test_hybrid_rerank_prefers_local_neighbor_and_lexical_overlap(config):
     reranker = DummyReranker(config)
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     corpus = [
         CorpusPaper(
             title="Diffusion transformers",
