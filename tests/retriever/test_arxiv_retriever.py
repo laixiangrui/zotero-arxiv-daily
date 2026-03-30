@@ -44,11 +44,14 @@ def _build_fake_arxiv_results(parsed_result, include_cross_list: bool):
 
 def _mock_arxiv_network(parsed_result, include_cross_list: bool, monkeypatch):
     fake_results = _build_fake_arxiv_results(parsed_result, include_cross_list)
-    monkeypatch.setattr(
-        arxiv_retriever.arxiv,
-        "Client",
-        lambda *args, **kwargs: SimpleNamespace(results=lambda search: fake_results),
-    )
+    def mock_retrieve_raw_papers(self):
+        raw_papers = fake_results
+        keywords = self.config.source.arxiv.get("keywords")
+        if keywords:
+            raw_papers = [paper for paper in raw_papers if self._match_keywords(paper)]
+        return raw_papers
+
+    monkeypatch.setattr(ArxivRetriever, "_retrieve_raw_papers", mock_retrieve_raw_papers)
     monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda paper: "Mock HTML full text")
     monkeypatch.setattr(arxiv_retriever, "extract_text_from_pdf", lambda paper: None)
     monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda paper: None)

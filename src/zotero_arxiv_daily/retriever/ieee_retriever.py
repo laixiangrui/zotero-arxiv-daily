@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 from loguru import logger
+from omegaconf import ListConfig
 
 from .base import BaseRetriever, register_retriever
 from ..protocol import Paper
@@ -38,7 +39,7 @@ def _coerce_string_list(value: Any) -> list[str] | None:
             items = [item.strip() for item in text.split(";") if item.strip()]
             return items or None
         return [text]
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple, ListConfig)):
         items = [str(item).strip() for item in value if str(item).strip()]
         return items or None
     raise TypeError(f"Expected string or list of strings, got {type(value).__name__}")
