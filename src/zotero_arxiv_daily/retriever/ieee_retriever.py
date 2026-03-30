@@ -117,6 +117,24 @@ class IEEERetriever(BaseRetriever):
                 response = requests.get(IEEE_API_URL, params=params, timeout=REQUEST_TIMEOUT)
                 response.raise_for_status()
                 return response.json()
+            except requests.HTTPError as exc:
+                last_exc = exc
+                status_code = exc.response.status_code if exc.response is not None else None
+                if status_code in {401, 403}:
+                    logger.warning(
+                        "IEEE API rejected the request with status "
+                        f"{status_code} at start_record={start_record}. "
+                        "This usually means the API key is invalid, still pending approval, "
+                        "or not authorized for this endpoint. Not retrying."
+                    )
+                    raise
+                if attempt == retry_num - 1:
+                    raise
+                logger.warning(
+                    f"Failed to retrieve IEEE papers at start_record={start_record}: {exc}. "
+                    f"Retry in {delay_time} seconds."
+                )
+                sleep(delay_time)
             except Exception as exc:
                 last_exc = exc
                 if attempt == retry_num - 1:

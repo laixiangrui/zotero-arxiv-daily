@@ -1,4 +1,5 @@
 import pytest
+import requests
 from omegaconf import open_dict
 
 import zotero_arxiv_daily.retriever.base as base_retriever
@@ -132,3 +133,33 @@ def test_ieee_retriever_requires_api_key_and_querytext(config):
 
     with pytest.raises(ValueError, match="api_key must be specified for ieee"):
         IEEERetriever(config)
+
+
+def test_ieee_retriever_does_not_retry_on_forbidden(config, monkeypatch):
+    with open_dict(config.source):
+        config.source.ieee.api_key = "ieee-test-key"
+        config.source.ieee.querytext = "wireless sensing"
+        config.source.ieee.start_date = "20260329"
+        config.source.ieee.end_date = "20260330"
+        config.source.ieee.max_records = 1
+
+    call_count = 0
+
+    class _ForbiddenResponse:
+        status_code = 403
+
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError("403 Client Error: Forbidden", response=self)
+
+    def mock_get(url, params, timeout):
+        nonlocal call_count
+        call_count += 1
+        return _ForbiddenResponse()
+
+    monkeypatch.setattr(ieee_retriever.requests, "get", mock_get)
+
+    retriever = IEEERetriever(config)
+    with pytest.raises(requests.HTTPError, match="403 Client Error"):
+        retriever._request_page(start_record=1)
+
+    assert call_count == 1
