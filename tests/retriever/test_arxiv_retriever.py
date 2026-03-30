@@ -139,6 +139,38 @@ def test_arxiv_retriever_keyword_filter_all(config, monkeypatch):
     assert "EventTSF" in papers[0].title
 
 
+def test_arxiv_retriever_falls_back_to_rss_when_api_is_rate_limited(config, monkeypatch):
+    parsed_result = feedparser.parse("tests/retriever/arxiv_rss_example.xml")
+    raw_parser = feedparser.parse
+
+    def mock_feedparser_parse(url):
+        if url == f"https://rss.arxiv.org/atom/{'+'.join(config.source.arxiv.category)}":
+            return parsed_result
+        return raw_parser(url)
+
+    class FailingArxivClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def results(self, search):
+            raise RuntimeError("HTTP 429")
+
+    monkeypatch.setattr(feedparser, "parse", mock_feedparser_parse)
+    monkeypatch.setattr(arxiv_retriever.arxiv, "Client", FailingArxivClient)
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda paper: None)
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_pdf", lambda paper: None)
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda paper: None)
+    monkeypatch.setattr(base_retriever, "sleep", lambda _: None)
+
+    retriever = ArxivRetriever(config)
+    papers = retriever.retrieve_papers()
+
+    parsed_results = [i for i in parsed_result.entries if i.get("arxiv_announce_type", "new") == "new"]
+    assert len(papers) == len(parsed_results)
+    assert {paper.title for paper in papers} == {entry.title for entry in parsed_results}
+    assert all(not paper.abstract.startswith("arXiv:") for paper in papers if paper.abstract)
+
+
 @register_retriever("failing_test")
 class FailingTestRetriever(BaseRetriever):
     def _retrieve_raw_papers(self) -> list[dict[str, str]]:

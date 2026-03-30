@@ -3,6 +3,7 @@ import arxiv
 from arxiv import Result as ArxivResult
 from ..protocol import Paper
 from ..utils import extract_markdown_from_pdf, extract_tex_code_from_tar
+from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 import feedparser
 from tqdm import tqdm
@@ -19,6 +20,18 @@ T = TypeVar("T")
 DOWNLOAD_TIMEOUT = (10, 60)
 PDF_EXTRACT_TIMEOUT = 180
 TAR_EXTRACT_TIMEOUT = 180
+
+
+@dataclass
+class ArxivFeedPaper:
+    title: str
+    summary: str
+    authors: list[str]
+    entry_id: str
+    pdf_url: str | None = None
+
+    def source_url(self) -> str | None:
+        return None
 
 
 def _download_file(url: str, path: str) -> None:
@@ -106,6 +119,65 @@ def _extract_text_from_tar_worker(source_url: str, paper_id: str) -> str | None:
         return file_contents["all"]
 
 
+def _normalize_feed_summary(summary: str | None) -> str:
+    if not summary:
+        return ""
+    normalized = re.sub(r"\s+", " ", summary).strip()
+    match = re.search(r"\bAbstract:\s*(.*)", normalized, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return normalized
+
+
+def _extract_author_names(raw_authors: Any) -> list[str]:
+    author_names: list[str] = []
+    for author in raw_authors or []:
+        if isinstance(author, str):
+            name = author.strip()
+        elif isinstance(author, dict):
+            name = str(author.get("name", "")).strip()
+        else:
+            name = str(getattr(author, "name", "")).strip()
+        if name:
+            author_names.append(name)
+    return author_names
+
+
+def _extract_feed_author_names(entry: Any) -> list[str]:
+    author_names = _extract_author_names(entry.get("authors"))
+    if author_names:
+        return author_names
+    raw_author_text = entry.get("author") or entry.get("dc_creator") or entry.get("creator") or ""
+    if not isinstance(raw_author_text, str):
+        return []
+    return [item.strip() for item in raw_author_text.split(",") if item.strip()]
+
+
+def _entry_to_feed_paper(entry: Any) -> ArxivFeedPaper:
+    entry_id = str(entry.get("link") or "")
+    if not entry_id:
+        paper_id = str(entry.get("id") or "").removeprefix("oai:arXiv.org:")
+        if paper_id:
+            entry_id = f"https://arxiv.org/abs/{paper_id}"
+    pdf_url = entry_id.replace("/abs/", "/pdf/") if entry_id else None
+    return ArxivFeedPaper(
+        title=str(entry.get("title") or ""),
+        summary=_normalize_feed_summary(entry.get("summary") or entry.get("description")),
+        authors=_extract_feed_author_names(entry),
+        entry_id=entry_id,
+        pdf_url=pdf_url,
+    )
+
+
+def _get_paper_id(raw_paper: ArxivResult | ArxivFeedPaper) -> str | None:
+    entry_id = getattr(raw_paper, "entry_id", None) or getattr(raw_paper, "id", None)
+    if not isinstance(entry_id, str):
+        return None
+    if "/abs/" in entry_id:
+        return entry_id.rsplit("/abs/", maxsplit=1)[-1]
+    return entry_id.removeprefix("oai:arXiv.org:")
+
+
 @register_retriever("arxiv")
 class ArxivRetriever(BaseRetriever):
     def __init__(self, config):
@@ -117,7 +189,7 @@ class ArxivRetriever(BaseRetriever):
     def _normalize_keyword(keyword: str) -> str:
         return re.sub(r"\s+", " ", keyword.strip().lower())
 
-    def _match_keywords(self, paper: ArxivResult) -> bool:
+    def _match_keywords(self, paper: ArxivResult | ArxivFeedPaper) -> bool:
         keywords = self.config.source.arxiv.get("keywords")
         if not keywords:
             return True
@@ -131,8 +203,10 @@ class ArxivRetriever(BaseRetriever):
             return all(keyword in normalized_text for keyword in normalized_keywords)
         return any(keyword in normalized_text for keyword in normalized_keywords)
 
-    def _retrieve_raw_papers(self) -> list[ArxivResult]:
-        client = arxiv.Client(num_retries=10, delay_seconds=10)
+    def _retrieve_raw_papers(self) -> list[ArxivResult | ArxivFeedPaper]:
+        # RSS already gives the daily candidate set. arXiv API enrichment is best effort,
+        # so fail fast and fall back to RSS metadata when the API is rate-limited.
+        client = arxiv.Client(num_retries=0, delay_seconds=3)
         query = '+'.join(self.config.source.arxiv.category)
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
         # Get the latest paper from arxiv rss feed
@@ -141,21 +215,52 @@ class ArxivRetriever(BaseRetriever):
             raise Exception(f"Invalid ARXIV_QUERY: {query}.")
         raw_papers = []
         allowed_announce_types = {"new", "cross"} if include_cross_list else {"new"}
-        all_paper_ids = [
-            i.id.removeprefix("oai:arXiv.org:")
-            for i in feed.entries
-            if i.get("arxiv_announce_type", "new") in allowed_announce_types
+        feed_entries = [
+            entry
+            for entry in feed.entries
+            if entry.get("arxiv_announce_type", "new") in allowed_announce_types
         ]
+        fallback_papers_by_id = {
+            paper_id: _entry_to_feed_paper(entry)
+            for entry in feed_entries
+            if (paper_id := str(entry.get("id") or "").removeprefix("oai:arXiv.org:"))
+        }
+        all_paper_ids = list(fallback_papers_by_id.keys())
         if self.config.executor.debug:
             all_paper_ids = all_paper_ids[:10]
 
         # Get full information of each paper from arxiv api
         bar = tqdm(total=len(all_paper_ids))
         for i in range(0, len(all_paper_ids), 20):
-            search = arxiv.Search(id_list=all_paper_ids[i:i + 20])
-            batch = list(client.results(search))
-            bar.update(len(batch))
-            raw_papers.extend(batch)
+            batch_ids = all_paper_ids[i:i + 20]
+            search = arxiv.Search(id_list=batch_ids)
+            try:
+                batch = list(client.results(search))
+                raw_papers.extend(batch)
+                returned_ids = {_get_paper_id(paper) for paper in batch}
+                missing_ids = [paper_id for paper_id in batch_ids if paper_id not in returned_ids]
+                if missing_ids:
+                    raw_papers.extend(
+                        fallback_papers_by_id[paper_id]
+                        for paper_id in missing_ids
+                        if paper_id in fallback_papers_by_id
+                    )
+                    logger.warning(
+                        f"arXiv API returned incomplete metadata for {len(missing_ids)} papers; "
+                        "using RSS metadata fallback for the missing entries."
+                    )
+            except Exception as exc:
+                fallback_batch = [
+                    fallback_papers_by_id[paper_id]
+                    for paper_id in batch_ids
+                    if paper_id in fallback_papers_by_id
+                ]
+                raw_papers.extend(fallback_batch)
+                logger.warning(
+                    f"arXiv API enrichment failed for batch starting at index {i}; "
+                    f"using RSS metadata fallback for {len(fallback_batch)} papers. Error: {exc}"
+                )
+            bar.update(len(batch_ids))
         bar.close()
 
         keywords = self.config.source.arxiv.get("keywords")
@@ -169,9 +274,9 @@ class ArxivRetriever(BaseRetriever):
 
         return raw_papers
 
-    def convert_to_paper(self, raw_paper: ArxivResult) -> Paper:
+    def convert_to_paper(self, raw_paper: ArxivResult | ArxivFeedPaper) -> Paper:
         title = raw_paper.title
-        authors = [a.name for a in raw_paper.authors]
+        authors = _extract_author_names(getattr(raw_paper, "authors", []))
         abstract = raw_paper.summary
         pdf_url = raw_paper.pdf_url
         full_text = extract_text_from_html(raw_paper)
@@ -190,7 +295,7 @@ class ArxivRetriever(BaseRetriever):
         )
 
 
-def extract_text_from_html(paper: ArxivResult) -> str | None:
+def extract_text_from_html(paper: ArxivResult | ArxivFeedPaper) -> str | None:
     html_url = paper.entry_id.replace("/abs/", "/html/")
     try:
         return _extract_text_from_html_worker(html_url)
@@ -199,7 +304,7 @@ def extract_text_from_html(paper: ArxivResult) -> str | None:
         return None
 
 
-def extract_text_from_pdf(paper: ArxivResult) -> str | None:
+def extract_text_from_pdf(paper: ArxivResult | ArxivFeedPaper) -> str | None:
     if paper.pdf_url is None:
         logger.warning(f"No PDF URL available for {paper.title}")
         return None
@@ -212,7 +317,7 @@ def extract_text_from_pdf(paper: ArxivResult) -> str | None:
     )
 
 
-def extract_text_from_tar(paper: ArxivResult) -> str | None:
+def extract_text_from_tar(paper: ArxivResult | ArxivFeedPaper) -> str | None:
     source_url = paper.source_url()
     if source_url is None:
         logger.warning(f"No source URL available for {paper.title}")
