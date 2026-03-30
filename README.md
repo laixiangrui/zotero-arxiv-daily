@@ -42,6 +42,7 @@
 - Ignore unwanted Zotero papers using a list of glob patterns.
 - Support multiple sources of papers to retrieve:
   - arxiv
+  - ieee
   - biorxiv
   - medrxiv
 
@@ -67,6 +68,7 @@ Below are all the secrets you need to set. They are invisible to anyone includin
 | RECEIVER | The e-mail address that receives the paper list. | abc@outlook.com |
 | OPENAI_API_KEY | API Key when using the API to access LLMs. You can get FREE API for using advanced open source LLMs in [SiliconFlow](https://cloud.siliconflow.cn/i/b3XhBRAm). | sk-xxx |
 | OPENAI_API_BASE | API URL when using the API to access LLMs. | https://api.siliconflow.cn/v1 |
+| IEEE_API_KEY | Optional. IEEE Xplore Metadata API key when enabling the `ieee` source. | your_ieee_key |
 
 Then you should also set a public variable `CUSTOM_CONFIG` for your custom configuration.
 ![vars](./assets/repo_var.png)
@@ -98,12 +100,19 @@ source:
     include_cross_list: false # Set to true to include arXiv cross-list papers in these categories.
     keywords: null # Optional. Filter retrieved papers by title/abstract keywords such as ["ISAC", "integrated sensing and communication"].
     keyword_match: any # "any" keeps papers matching at least one keyword; "all" requires every keyword.
+  ieee:
+    api_key: ${oc.env:IEEE_API_KEY,null}
+    querytext: "(\"integrated sensing and communication\" OR ISAC) AND wireless"
+    content_type: ["Journals","Conferences","Early Access"]
+    days_back: 1
+    max_records: 100
 
 executor:
   debug: ${oc.env:DEBUG,null}
-  source: ['arxiv']
+  source: ['arxiv','ieee']
 ```
 Set `source.arxiv.include_cross_list: true` if you want cross-listed papers included.
+Set `source.ieee.days_back: 1` if you want the daily workflow to fetch IEEE records inserted yesterday.
 >[!NOTE]
 > `${oc.env:XXX,yyy}` means the value of the environment variable `XXX`. If the variable is not set, the default value `yyy` will be used.
 
@@ -120,6 +129,19 @@ source:
     include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true
     keywords: null # Optional keywords or phrases used to filter title and abstract after category retrieval. Example: ["ISAC", "integrated sensing and communication", "sensing"]
     keyword_match: any # Keyword filter mode. "any" means at least one keyword matches; "all" means all keywords must match.
+  ieee:
+    api_key: null # IEEE Xplore Metadata API key. Example: ${oc.env:IEEE_API_KEY}
+    querytext: null # Free-form IEEE Xplore query string. Example: "(\"integrated sensing and communication\" OR ISAC) AND wireless"
+    content_type: ["Journals","Conferences","Early Access"] # IEEE content types to include. Example: ["Journals","Conferences"]
+    publisher: IEEE # Publisher filter. Example: IEEE
+    open_access: null # Optional open-access filter. Example: true
+    publication_title: null # Optional publication title filter. Example: IEEE Transactions on Wireless Communications
+    author: null # Optional author filter. Example: Robert Heath
+    affiliation: null # Optional affiliation filter. Example: Tsinghua University
+    start_date: null # Optional insert-date range start in YYYYMMDD. Example: 20260330
+    end_date: null # Optional insert-date range end in YYYYMMDD. Example: 20260330
+    days_back: 1 # Used when start_date/end_date are null. 1 means retrieve yesterday's inserted IEEE records.
+    max_records: 100 # Maximum number of IEEE metadata records to fetch. Example: 100
   biorxiv:
     category: null # The categories of target biorxiv papers. Find categories from [here](https://www.biorxiv.org/). Example: ["biochemistry","animal behavior and cognition"]
   medrxiv:
@@ -159,7 +181,7 @@ executor:
   debug: false # Whether to use debug mode. Example: true
   send_empty: false # Whether to send an empty email even if no new papers today. Example: true
   max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
-  source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv']
+  source: ??? # The sources of papers to retrieve. Example: ['arxiv','ieee','biorxiv','medrxiv']
   reranker: local # The reranker to use. Example: 'local' or 'api'
 ```
 

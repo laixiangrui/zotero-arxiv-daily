@@ -20,6 +20,12 @@ llm:
 source:
   arxiv:
     category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
+  ieee:
+    api_key: ${oc.env:IEEE_API_KEY,null}
+    querytext: null # Example: "(\"integrated sensing and communication\" OR ISAC) AND wireless"
+    content_type: ["Journals","Conferences","Early Access"]
+    days_back: 1
+    max_records: 100
 
 executor:
   debug: ${oc.env:DEBUG,null}

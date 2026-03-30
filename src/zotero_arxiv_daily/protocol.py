@@ -134,6 +134,8 @@ class Paper:
             return affiliations
     
     def generate_affiliations(self, openai_client:OpenAI,llm_params:dict) -> Optional[list[str]]:
+        if self.affiliations is not None:
+            return self.affiliations
         try:
             affiliations = self._generate_affiliations_with_llm(openai_client,llm_params)
             self.affiliations = affiliations
