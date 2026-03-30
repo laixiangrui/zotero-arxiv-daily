@@ -29,10 +29,15 @@ def _build_fake_arxiv_results(parsed_result, include_cross_list: bool):
     for entry in parsed_result.entries:
         if entry.get("arxiv_announce_type", "new") not in allowed_announce_types:
             continue
+        summary = (
+            entry.get("summary")
+            or entry.get("description")
+            or ""
+        )
         fake_results.append(
             SimpleNamespace(
                 title=entry.title,
-                summary=entry.summary,
+                summary=summary,
                 authors=[SimpleNamespace(name=author.name) for author in entry.authors],
                 pdf_url=entry.link.replace("/abs/", "/pdf/"),
                 entry_id=entry.link,
