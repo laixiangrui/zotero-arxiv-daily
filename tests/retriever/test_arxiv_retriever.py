@@ -34,13 +34,22 @@ def _build_fake_arxiv_results(parsed_result, include_cross_list: bool):
             or entry.get("description")
             or ""
         )
+        raw_authors = entry.get("authors") or []
+        authors = []
+        for author in raw_authors:
+            author_name = getattr(author, "name", None)
+            if author_name is None and isinstance(author, dict):
+                author_name = author.get("name")
+            if author_name:
+                authors.append(SimpleNamespace(name=author_name))
+        link = entry.get("link") or ""
         fake_results.append(
             SimpleNamespace(
                 title=entry.title,
                 summary=summary,
-                authors=[SimpleNamespace(name=author.name) for author in entry.authors],
-                pdf_url=entry.link.replace("/abs/", "/pdf/"),
-                entry_id=entry.link,
+                authors=authors,
+                pdf_url=link.replace("/abs/", "/pdf/") if link else None,
+                entry_id=link,
                 source_url=lambda: None,
             )
         )
