@@ -155,6 +155,11 @@ def test_arxiv_retriever_falls_back_to_rss_when_api_is_rate_limited(config, monk
         def results(self, search):
             raise RuntimeError("HTTP 429")
 
+    with open_dict(config.source.arxiv):
+        config.source.arxiv.include_cross_list = False
+        config.source.arxiv.keywords = None
+        config.source.arxiv.keyword_match = "any"
+
     monkeypatch.setattr(feedparser, "parse", mock_feedparser_parse)
     monkeypatch.setattr(arxiv_retriever.arxiv, "Client", FailingArxivClient)
     monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda paper: None)
