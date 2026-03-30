@@ -10,6 +10,7 @@ from zotero_arxiv_daily.retriever.arxiv_retriever import ArxivRetriever, _run_wi
 from zotero_arxiv_daily.retriever.base import BaseRetriever, register_retriever
 from zotero_arxiv_daily.protocol import Paper
 import zotero_arxiv_daily.retriever.arxiv_retriever as arxiv_retriever
+import zotero_arxiv_daily.retriever.base as base_retriever
 
 
 def _sleep_and_return(value: str, delay_seconds: float) -> str:
@@ -22,6 +23,38 @@ def _raise_runtime_error() -> None:
     raise RuntimeError("boom")
 
 
+def _build_fake_arxiv_results(parsed_result, include_cross_list: bool):
+    allowed_announce_types = {"new", "cross"} if include_cross_list else {"new"}
+    fake_results = []
+    for entry in parsed_result.entries:
+        if entry.get("arxiv_announce_type", "new") not in allowed_announce_types:
+            continue
+        fake_results.append(
+            SimpleNamespace(
+                title=entry.title,
+                summary=entry.summary,
+                authors=[SimpleNamespace(name=author.name) for author in entry.authors],
+                pdf_url=entry.link.replace("/abs/", "/pdf/"),
+                entry_id=entry.link,
+                source_url=lambda: None,
+            )
+        )
+    return fake_results
+
+
+def _mock_arxiv_network(parsed_result, include_cross_list: bool, monkeypatch):
+    fake_results = _build_fake_arxiv_results(parsed_result, include_cross_list)
+    monkeypatch.setattr(
+        arxiv_retriever.arxiv,
+        "Client",
+        lambda *args, **kwargs: SimpleNamespace(results=lambda search: fake_results),
+    )
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda paper: "Mock HTML full text")
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_pdf", lambda paper: None)
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda paper: None)
+    monkeypatch.setattr(base_retriever, "sleep", lambda _: None)
+
+
 
 def test_arxiv_retriever(config, monkeypatch):
 
@@ -32,6 +65,7 @@ def test_arxiv_retriever(config, monkeypatch):
             return parsed_result
         return raw_parser(url)
     monkeypatch.setattr(feedparser, "parse", mock_feedparser_parse)
+    _mock_arxiv_network(parsed_result, include_cross_list=False, monkeypatch=monkeypatch)
 
     retriever = ArxivRetriever(config)
     papers = retriever.retrieve_papers()
@@ -56,6 +90,7 @@ def test_arxiv_retriever_keyword_filter_any(config, monkeypatch):
         config.source.arxiv.include_cross_list = True
         config.source.arxiv.keywords = ["time series forecasting", "multimodal"]
         config.source.arxiv.keyword_match = "any"
+    _mock_arxiv_network(parsed_result, include_cross_list=True, monkeypatch=monkeypatch)
 
     retriever = ArxivRetriever(config)
     papers = retriever.retrieve_papers()
@@ -78,6 +113,7 @@ def test_arxiv_retriever_keyword_filter_all(config, monkeypatch):
         config.source.arxiv.include_cross_list = True
         config.source.arxiv.keywords = ["time series forecasting", "multimodal"]
         config.source.arxiv.keyword_match = "all"
+    _mock_arxiv_network(parsed_result, include_cross_list=True, monkeypatch=monkeypatch)
 
     retriever = ArxivRetriever(config)
     papers = retriever.retrieve_papers()
